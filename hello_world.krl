@@ -19,5 +19,24 @@ A first ruleset for the Quickstart
     select when echo hello
     send_directive("say", {"something": "Hello World"})
   }
-   
+  
+  // part 4
+  // rule hello_monkey {
+  //   select when echo monkey
+  //   pre {
+  //     name = event:attrs{"name"}|| "Monkey"; // Equals bar at this point
+  //     b = klog("value used: " + name);
+  //   }
+  //   send_directive("say", {"something": "Hello " + name});
+  // }
+  
+  // part 5
+  rule hello_monkey {
+    select when echo monkey
+    pre {
+      name = event:attrs{"name"} => event:attrs{"name"} | "Monkey"; // Equals bar at this point
+      b = klog("value used: " + name);
+    }
+    send_directive("say", {"something": "Hello " + name});
+  }
 }
