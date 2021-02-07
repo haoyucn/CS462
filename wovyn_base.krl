@@ -25,7 +25,8 @@ ruleset wovyn_base {
       select when wovyn new_temperature_reading
       pre{
         tempF = event:attrs{"temperature"}[0]["temperatureF"]
-        k = klog("get high temperature: " + tempF + "-----------")
+        logS = tempF > temperature_threshold => "get high temperature: " + tempF + "-----------" | "not exceeding"
+        k = klog(logS)
       }
       always{
         raise wovyn event "threshold_violation"
