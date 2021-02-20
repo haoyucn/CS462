@@ -1,0 +1,40 @@
+
+<div *ngIf="!configShow">
+  <div>
+    Live Temp reading: {{ liveReading }}
+  </div>
+  <br/>
+  <div>Recent Readings: </div>
+  <ul>
+    <li *ngFor="let r of recentTempReading;">
+      {{ r.timestamp }}: {{r.temperature}}
+    </li>
+  </ul>
+
+  <br/>
+  <div>Violation Logs: </div>
+  <ul>
+    <li *ngFor="let v of violationLogs;">
+      {{ v.timestamp }}: {{v.temperature}}
+    </li>
+  </ul>
+
+  <button (click)="setConfigShow(true)">Show config</button>
+</div>
+
+
+<div *ngIf='configShow'>
+  <div>
+    <label>Sensor Name: </label>
+    <input type="text" [(ngModel)]="sensorName"> <br/>
+    <label>Location: </label>
+    <input type='text' [(ngModel)]="sensorLoc"> <br/>
+    <label>Sms number: </label>
+    <input type='text' [(ngModel)]="smsNum"> <br/>
+    <label>Threshold: </label>
+    <input type='text' [(ngModel)]='threshold'> <br/>
+  </div>
+  <br/>
+  <button (click)="saveConfig()">Save config</button>
+</div>
+
