@@ -2,12 +2,19 @@ ruleset wovyn_base {
     meta {
       name "wovyn_base"
       use module message
+      use module sensor_profile
       configure using 
         heart_beat_second = 20
+      shares showT
+      provides showT
     }
     global {
-      temperature_threshold = 75.31
+      temperature_threshold = sensor_profile:threshold() => sensor_profile:threshold() | 74.1
+      showT = function(){
+        temperature_threshold
+      }
     }
+
     rule process_heartbeat {
       select when wovyn heartbeat where event:attrs{"genericThing"}
       pre{
@@ -44,7 +51,12 @@ ruleset wovyn_base {
         reciever = "+18014208731" 
         k = klog("temperature "+ tempF +" exceeding threshold, send sms -----------")
       }
-      message:send_sms(messageContent, reciever) setting(content)
+      // message:send_sms(messageContent, reciever) setting(content)
+    }
+
+    rule nothinghappends{
+      select when wovyn connect
+      send_directive("content", {"abs": "bbb"})
     }
 }
   

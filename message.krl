@@ -5,9 +5,9 @@ ruleset message {
             auth_token = meta:rulesetConfig{"auth_token"}
             SID = meta:rulesetConfig{"SID"}
             SSID = meta:rulesetConfig{"SSID"}
-
+        use module sensor_profile
         shares message
-        provide message
+        provide message, send_sms
     }
     global {
       
@@ -20,11 +20,11 @@ ruleset message {
         }
     }
 
-    rule send_sms {
+    rule send_sms_1 {
         select when send sms
         pre {
           message = event:attrs{"message"} => event:attrs{"message"} | "empty message"; // Equals bar at this point
-          reciever = event:attrs{"reciever"} => event:attrs{"reciever"} | "+18014208731"; // Equals bar at this point
+          reciever = sensor_profile:smsNumber() => sensor_profile:smsNumber() | "+18014208731"; // Equals bar at this point
         }
         send_sms(message, reciever)  setting(content)
       }

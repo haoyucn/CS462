@@ -2,13 +2,13 @@ ruleset wovyn_sensor_sim {
     meta {
       name "wovyn_sensor_sim"
       configure using 
-        heart_beat_second = 20  
+        heart_beat_second = 0  
       provides send_heartbeat
     }
     global {
       send_heartbeat = defaction(temp) {
         every {
-          http:post(<<http://192.168.1.2:3000/sky/event/ckku3kpa900mhkmj421l66168/temp/wovyn/heartbeat>>
+          http:post(<<http://192.168.1.2:3000/sky/event/ckldpvh6l002p30j403o18ekp/temp/wovyn/heartbeat>>
             ,
             json={
               "emitterGUID":"5CCF7F2BD537",
@@ -124,7 +124,7 @@ ruleset wovyn_sensor_sim {
     rule send_heartbeat_once {
       select when wovynsim singleheartbeat
       pre{
-        temp = event:attrs{"temp"} || 99.51
+        temp = event:attrs{"temp"} || math:round(random:number(lower = 70, upper = 76),2)
       }
       send_heartbeat(temp)
     }
