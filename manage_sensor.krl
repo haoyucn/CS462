@@ -6,7 +6,7 @@ ruleset manage_sensors {
             sensor_profileURL = "file:///home/haoyu/Documents/cs462ds/sensor_profile.krl"
             emitterURL = "file:///home/haoyu/Documents/cs462ds/emitter.krl" 
         use module io.picolabs.wrangler alias wrangler
-        shares show_sensors , get_all_temp_records
+        shares show_sensors , get_all_temp_records, get_sensor_temp_records, listSubscriptions, showSubscriptionFeeds
     }
     global {
         defaultRuleSetURLs = [ "file:///home/haoyu/Documents/cs462ds/sensor_profile.krl", 
@@ -19,9 +19,15 @@ ruleset manage_sensors {
         nameFromID = function(sensor_id) {
             "sensor " + sensor_id
         }
-
+        listSubscriptions = function() {
+            ent:subs
+        }
         showChildren = function() {
             wrangler:children()
+        }
+
+        showSubscriptionFeeds = function() {
+            ent:readings
         }
 
         get_sensor_temp_records = function(sensor_id) {
@@ -31,10 +37,22 @@ ruleset manage_sensors {
 
         get_all_temp_records = function(){
             readings = []
-            c = ent:sensors.filter(function(v, k) {
-                readings.append(get_sensor_temp_records(k))
+            // c = ent:sensors.filter(function(v, k) {
+            //     x = get_sensor_temp_records(k)
+            //     y = klog(x)
+            //     readings = readings.append(x)
+            //     x1 = klog(readings)
+            //     true
+            // })
+
+            m = ent:sensors.keys().map(function(k) {
+                get_sensor_temp_records(k)
             })
-            return {"readings": readings}
+
+            r = m.reduce(function(a, b){
+                a.append(b)
+            })
+            return {"readings": r}
             
         }
 
@@ -44,6 +62,8 @@ ruleset manage_sensors {
         select when sensor needs_initialization
         always {
           ent:sensors := {}
+          ent:subs :={}
+          ent:readings := {}
         }
     }
 
@@ -69,7 +89,6 @@ ruleset manage_sensors {
             pre {
             the_sensor = {"eci": event:attrs{"eci"}}
             sensor_id = event:attrs{"sensor_id"}
-            x = klog("found new child: " + event:attrs.encode())
             
             }
             if sensor_id
@@ -110,7 +129,81 @@ ruleset manage_sensors {
             }
         )
     }
+
+    rule subcribe_new_child {
+        select when wrangler new_child_created
+        
+        pre {
+            the_sensor = {"eci": event:attrs{"eci"}}
+            sensor_id = event:attrs{"sensor_id"}
+            sensorName = nameFromID(sensor_id)
+        }
+            
+        fired {
+            raise wrangler event "subscription" 
+            attributes
+                { 
+                    "name" : sensorName,
+                    "Tx_role": "sensor",
+                    "Rx_role": "manager",
+                    "channel_type": "subscription",
+                    "wellKnown_Tx" : the_sensor.get("eci")
+                }
+        }
+    }
     
+    rule add_to_sublist {
+        select when wrangler subscription_added
+        pre {
+            eci = event:attrs{"Tx"}
+            name = event:attrs{"name"}
+            role = event:attrs{"Rx_role"}
+            id = event:attrs{"Id"}
+            p = {"id": id, "eci":eci  }
+        }
+        if role == "sensor" then
+            send_directive("get subs")
+        fired {
+            ent:subs := ent:subs.defaultsTo({}).put(name, p);
+        }
+    }
+
+    rule subscribe_existing_sensor {
+        select when sensor sub_existing
+        pre {
+          
+          name = event:attrs{"name"}
+          wellKnown_Tx = event:attrs{"wellKnown_Tx"}
+          Tx_role = event:attrs{"Tx_role"} => event:attrs{"Tx_role"} | "sensor"
+          Rx_role = event:attrs{"Rx_role"} => event:attrs{"Rx_role"} | "manager"
+          channel_type = event:attrs{"channel_type"} => event:attrs{"channel_type"} | "subscription"
+        //   Tx_host = (event:attr("Tx_host").isnull() || event:attr("Tx_host") == "" => null | event:attr("Tx_host"))
+        }
+        
+        always {
+          raise wrangler event "subscription"
+            attributes {"name": name,
+                       "Tx_role": Tx_role,
+                       "Rx_role": Rx_role,
+                       "Tx_host": null,
+                       "channel_type": channel_type,
+                       "wellKnown_Tx": wellKnown_Tx}
+        }
+      }
+
+    rule read_subscription_feed {
+        select when sensor subscription_feed
+        pre {
+            wellKnown_Tx = event:attrs{"wellKnown_Tx"}
+            r = event:attrs{"reading"}
+            
+        }
+
+        always{
+            ent:readings := ent:readings.defaultsTo({}).put(wellKnown_Tx, r);
+        }
+
+    }
     rule sensor_profile_info {
         select when sensor get_profile
         pre {
@@ -154,5 +247,19 @@ ruleset manage_sensors {
         }
         send_directive(x)
     }
- 
+
+    rule get_subscription_temps{
+        select when sensor get_subscription_temp
+        foreach ent:subs setting(v, k)
+            pre {
+                eci = v{"eci"}
+            }
+            event:send({
+                "eci":eci,
+                "domain":"wovyn", "name":"readings_update",
+                "attrs":{
+                }
+            })
+    }
+
 }

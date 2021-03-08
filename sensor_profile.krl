@@ -1,7 +1,8 @@
 ruleset sensor_profile {
     meta {
       name "sensor_profile"
-      provides threshold, smsNumber
+      provides threshold, smsNumber, get_profile_f
+      shares get_profile_f
     }
     global {
         threshold = function(){
@@ -9,6 +10,9 @@ ruleset sensor_profile {
         }
         smsNumber = function(){
             ent:smsNumber
+        }
+        get_profile_f = function() {
+            {"name": ent:sensorName, "location": ent:sensorLocation, "number": ent:smsNumber, "threshold123123123": ent:threshold }
         }
     }
     
