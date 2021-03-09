@@ -6,6 +6,7 @@ ruleset manage_sensors {
             sensor_profileURL = "file:///home/haoyu/Documents/cs462ds/sensor_profile.krl"
             emitterURL = "file:///home/haoyu/Documents/cs462ds/emitter.krl" 
         use module io.picolabs.wrangler alias wrangler
+        use module message
         shares show_sensors , get_all_temp_records, get_sensor_temp_records, listSubscriptions, showSubscriptionFeeds
     }
     global {
@@ -261,5 +262,18 @@ ruleset manage_sensors {
                 }
             })
     }
+
+    rule subscription_threshold_violation{
+        select when sensor subscription_threshold_violation
+            pre {
+                violation = event:attrs{"violation"}
+                time = violation{"timestamp"}
+                messageContent = "At " + time + " temperature " + violation{"temperature"} +" exceeding threshold"
+                reciever = "+18014208731" 
+            }
+            message:send_sms(messageContent, reciever) setting(content)
+    }
+
+    
 
 }
