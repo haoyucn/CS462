@@ -109,17 +109,22 @@ ruleset temperature_store {
         })
     }
 
+    // this is to answer the subscription request
     rule sendData_to_observers {
         select when wovyn readings_update
         pre {
             temps = temperatures()
+            corrId = event:attrs{"corrId"}
+            sensorName = event:attrs{"sensorName"}
         }
         event:send({
             "eci":ent:subscriptionTx,
-            "domain":"sensor", "name":"subscription_feed",
+            "domain":"sensor", "name":"subscription_answer_reading_req",
             "attrs":{
                 "wellKnown_Tx":subs:wellKnown_Rx(){"id"},
-                "reading": temps
+                "reading": temps,
+                "corrId": corrId,
+                "sensorName": sensorName
             }
         })
     }
