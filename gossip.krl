@@ -2,7 +2,7 @@ ruleset gossip {
     meta {
         use module io.picolabs.wrangler alias wrangler
         use module io.picolabs.subscription alias subs
-        shares tryFilterMap, messages, getSeenMessage,showPeerSources, showPeerSubscriber
+        shares tryFilterMap, messages, getSeenMessage,showPeerSources, showPeerSubscriber, getCounter
     }
     global {
         tryFilterMap = function(){
@@ -36,6 +36,22 @@ ruleset gossip {
             })
         }
 
+        getNewCounterValue = function(completeMessages) {
+            x = completeMessages.map(function(v, k) {
+                d = v.map(function(a) {
+                    a{"CounterUpdate"}.as("Number")
+                })
+                d.reduce(function(a, b){
+                    a + b
+                })
+            })
+            
+            t = x.values()
+            t.reduce(function(a, b){
+                a + b
+            })
+        }
+
         messages = function(){
             ent:messages
         }
@@ -43,7 +59,7 @@ ruleset gossip {
         getSeentts = function(){
             c = ent:tts.map(function(v, k) {
                 z = v.reduce(function(a, b){
-                    (b{"MessageID"} - a{"MessageID"}) == 1 => b| a
+                    (b{"MessageID"} - a{"MessageID"}) == 1 => b | a
                 })
                 z{"MessageID"} != v.length() => 0 | z{"MessageID"}
             })
@@ -55,6 +71,10 @@ ruleset gossip {
 
         showPeerSubscriber = function() {
             ent:subscriptionTxs
+        }
+
+        getCounter = function(){
+            ent:violationCounter
         }
     }
 
@@ -71,6 +91,7 @@ ruleset gossip {
             ent:subscriptionTxs := {}
             ent:name := name
             ent:messageOn := true
+            ent:violationCounter := 0
         }
     }
 
@@ -83,20 +104,21 @@ ruleset gossip {
             SensorID = message{"SensorID"}
             Temperature = message{"Temperature"}
             Timestamp = message{"Timestamp"}
-            
+            vioCounterUpdate = message{"CounterUpdate"}.as("Number")
             sensorMessages = ent:messages{SensorID} =>  ent:messages{SensorID} | []
             messagesAfterAdd = sensorMessages.append(message)
 
         }
         always {
             ent:messages := ent:messages.defaultsTo({}).put(SensorID, messagesAfterAdd)
-
+            ent:violationCounter := ent:violationCounter + vioCounterUpdate
             raise gossip event "spread_rumor"
                 attributes {
                     "Timestamp": Timestamp,
                     "Temperature": Temperature,
                     "SensorID" : SensorID,
-                    "MessageID": MessageID
+                    "MessageID": MessageID,
+                    "CounterUpdate": vioCounterUpdate
                 }
         }
     }
@@ -111,11 +133,13 @@ ruleset gossip {
                 SensorID = event:attrs{"SensorID"}
                 Temperature = event:attrs{"Temperature"}
                 Timestamp = event:attrs{"Timestamp"}
+                vioCounterUpdate = event:attrs{"CounterUpdate"}.as("Number")
                 rumor = {
                     "Timestamp": Timestamp,
                     "Temperature": Temperature,
                     "SensorID" : SensorID,
-                    "MessageID": MessageID
+                    "MessageID": MessageID,
+                    "CounterUpdate": vioCounterUpdate
                 }
             }
             if ent:messageOn then
@@ -135,6 +159,7 @@ ruleset gossip {
             rumor = event:attrs{"rumor"}
             sensorId = rumor{"SensorID"}
             messageId = rumor{"MessageID"}
+            counterUpdate = rumor{"CounterUpdate"}.as("Number")
             sensorHistory = ent:messages{sensorId} => ent:messages{sensorId} | []
             duplicatedMessage = sensorHistory.filter(function(x) {x{"MessageID"} == messageId})
             isNewRumor = duplicatedMessage.length() == 0 => true | false
@@ -145,12 +170,14 @@ ruleset gossip {
             send_directive("abs")
         fired {
             ent:messages := ent:messages.defaultsTo({}).put(sensorId, newSensorHistory)
+            ent:violationCounter := ent:violationCounter + counterUpdate
             raise gossip event "spread_rumor"
                 attributes {
                     "Timestamp": rumor{"Timestamp"},
                     "Temperature": rumor{"Temperature"},
                     "SensorID" : rumor{"SensorID"},
-                    "MessageID": rumor{"MessageID"}
+                    "MessageID": rumor{"MessageID"},
+                    "CounterUpdate": rumor{"CounterUpdate"},
                 }
 
         }
@@ -184,7 +211,7 @@ ruleset gossip {
                 seenMessage{k} => seenMessage{k} < v | true
             })
             sendMissingMessage = missingMessagesSensors.keys().length() > 0 => true | false
-            missingMessages= getMissingMessages(missingMessagesSensors)
+            missingMessages = getMissingMessages(missingMessagesSensors)
 
         }
         if ent:messageOn then
@@ -204,9 +231,21 @@ ruleset gossip {
         pre {
             missingMessages = event:attrs{"missingMessages"}
             completeMessages = addMissingMessages(missingMessages)
+            newCounterValue = getNewCounterValue(completeMessages)
         }
         always {
             ent:messages := completeMessages if ent:messageOn
+            ent:violationCounter := newCounterValue
+        }
+    }
+
+    rule recalculate_counter{
+        select when gossip counter_refresh
+        pre {
+            newCounterValue = getNewCounterValue(ent:messages)
+        }
+        always{
+            ent:violationCounter := newCounterValue
         }
     }
 

@@ -2,7 +2,7 @@ ruleset temperature_store {
     meta {
         use module sensor_profile
         use module io.picolabs.subscription alias subs
-        shares temperatures, threshold_violations, inrange_temperatures
+        shares temperatures, threshold_violations, inrange_temperatures, printWellKnowTX, getMessageId, getRec
         provide  threshold_violations, inrange_temperatures
     }
     global {
@@ -20,6 +20,32 @@ ruleset temperature_store {
             })
         }
 
+        message_reciever = defaction(channelId, messageId, sensorId, temp, timeStamp, thresholdUpdate) {
+            every {
+                http:post(<<http://192.168.1.2:3000/sky/event/#{channelId}/messagereciever/gossip/heartbeat>>
+                    ,
+                    json={
+                        "message":{
+                            "MessageID": messageId,
+                            "SensorID": sensorId,
+                            "Temperature": temp,
+                            "Timestamp": timeStamp,
+                            "CounterUpdate": thresholdUpdate
+                        }
+                    }
+                )
+            }
+        }
+        printWellKnowTX = function(){
+            ent:subscriptionTx
+        }
+        getRec = function() {
+            ent:recivers 
+        }
+
+        getMessageId = function(){
+            ent:messageId
+        }
     }
 
     rule report_last_reading {
@@ -74,20 +100,25 @@ ruleset temperature_store {
         always {
             ent:violationRecords:= []
             ent:records:= []
-            ent:violationLowest:= 1000       
+            ent:violationLowest:= 1000 
+            ent:recivers := []
+            ent:messageId := 0 
         }
     }
 
     rule auto_accept {
         select when wrangler inbound_pending_subscription_added
         pre {
+            zs = event:attrs
             my_role = event:attr("Rx_role")
             their_role = event:attr("Tx_role")
+            id = event:attrs{"Id"}
         }
         always {
           raise wrangler event "pending_subscription_approval"
             attributes event:attrs
           ent:subscriptionTx := event:attr("Tx")
+          ent:sensorId := id
         }
     }
 
@@ -144,4 +175,39 @@ ruleset temperature_store {
             }
         })
     }
+
+    rule add_message_reciever {
+        select when message_reciever add
+        pre {
+            channelId = event:attrs{"reciever_channel_id"}
+        }
+        always {
+            ent:recivers := ent:recivers.defaultsTo([]).append(channelId)
+          }
+    }
+
+    rule message_recievers {
+        select when wovyn new_temperature_reading
+        foreach ent:recivers setting(channelId)
+            pre{
+                tempF = event:attrs{"temperature"}[0]["temperatureF"]
+                time = event:attrs{"time"}
+                sensorId = ent:sensorId
+                messageId = ent:messageId => ent:messageId | 0
+                nmid = messageId + 1
+                thresholdVio = tempF > sensor_profile:threshold() => 1 | 0
+                thresholdUpdate = thresholdVio - ent:vioState
+            }
+            message_reciever(channelId, messageId, sensorId, tempF, time, thresholdUpdate) 
+            fired {
+
+            }
+            finally {
+                ent:messageId := nmid
+                ent:vioState := thresholdVio
+            }
+    
+    }   
+    
+
 }
